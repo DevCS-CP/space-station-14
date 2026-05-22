@@ -36,6 +36,7 @@ public abstract class SharedItemSwitchSystem : EntitySystem
         SubscribeLocalEvent<ItemSwitchComponent, UseInHandEvent>(OnUseInHand);
         SubscribeLocalEvent<ItemSwitchComponent, GetVerbsEvent<ActivationVerb>>(OnActivateVerb);
         SubscribeLocalEvent<ItemSwitchComponent, ActivateInWorldEvent>(OnActivate);
+        SubscribeLocalEvent<ItemSwitchComponent, BatteryStateChangedEvent>(OnChargeChanged);
 
         SubscribeLocalEvent<ClothingComponent, ItemSwitchedEvent>(UpdateClothingLayer);
     }
@@ -46,6 +47,21 @@ public abstract class SharedItemSwitchSystem : EntitySystem
         state ??= ent.Comp.States.Keys.FirstOrDefault();
         if (state != null)
             Switch((ent, ent.Comp), state, predicted: ent.Comp.Predictable);
+    }
+
+    private void OnChargeChanged(Entity<ItemSwitchComponent> ent, ref BatteryStateChangedEvent args)
+    {
+        if (ent.Comp.DefaultState == null)
+            return;
+
+        if (ent.Comp.States.TryGetValue(ent.Comp.State, out var state) && TryComp<BatteryComponent>(ent.Owner, out var battery))
+        {
+            if (state == null || battery == null)
+                return;
+
+            if (state.MinimumCharge != 0 && state.MinimumCharge > _battery.GetCharge((ent.Owner, battery)))
+                Switch((ent.Owner, ent.Comp), ent.Comp.DefaultState, predicted: ent.Comp.Predictable); //This will cause an issue if default state has a required charge
+        }
     }
 
     private void OnUseInHand(Entity<ItemSwitchComponent> ent, ref UseInHandEvent args)
@@ -137,13 +153,19 @@ public abstract class SharedItemSwitchSystem : EntitySystem
         };
         RaiseLocalEvent(uid, ref attempt);
 
-        if (ent.Comp.States.TryGetValue(ent.Comp.State, out var prevState) && prevState.RemoveComponents && prevState.Components is not null)
-            EntityManager.RemoveComponents(ent, prevState.Components);
-
-        if (state.Components is not null)
-            EntityManager.AddComponents(ent, state.Components);
-
         if (!comp.Predictable) predicted = false;
+
+        if (TryComp<BatteryComponent>(uid, out var battery))
+        {
+            var batteryComp = battery!;
+
+            if (state.MinimumCharge != 0 && state.MinimumCharge > _battery.GetCharge((ent.Owner, batteryComp)))
+            {
+                if (state.PopupFailToActivate != null)
+                    attempt.Popup = Loc.GetString(state.PopupFailToActivate);
+                attempt.Cancelled = true;
+            }
+        }
 
         if (attempt.Cancelled)
         {
@@ -160,6 +182,12 @@ public abstract class SharedItemSwitchSystem : EntitySystem
 
             return false;
         }
+
+        if (ent.Comp.States.TryGetValue(ent.Comp.State, out var prevState) && prevState.RemoveComponents && prevState.Components is not null)
+            EntityManager.RemoveComponents(ent, prevState.Components);
+
+        if (state.Components is not null)
+            EntityManager.AddComponents(ent, state.Components);
 
         if (predicted)
             _audio.PlayPredicted(state.SoundStateActivate, uid, user);

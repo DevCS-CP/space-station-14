@@ -19,6 +19,12 @@ public sealed partial class ItemSwitchComponent : Component
     public Dictionary<string, ItemSwitchState> States = [];
 
     /// <summary>
+    ///     The initial state of the item it should revert to
+    /// </summary>
+    [DataField]
+    public string? DefaultState;
+
+    /// <summary>
     /// Can the entity be activated in the world.
     /// </summary>
     [DataField]
@@ -47,10 +53,16 @@ public sealed partial class ItemSwitchState : BoundUserInterfaceMessage
     public string Verb;
 
     [DataField]
+    public float MinimumCharge = 0;
+
+    [DataField]
     public SoundSpecifier? SoundStateActivate;
 
     [DataField]
     public SoundSpecifier? SoundFailToActivate;
+
+    [DataField]
+    public string? PopupFailToActivate;
 
     [DataField]
     public ComponentRegistry? Components;
